@@ -13,10 +13,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install numpy pillow opencv-python-headless python-dateutil
+      - run: pip install numpy pillow python-dateutil opencv-python-headless
       - run: python gen.py
+        env:
+          GH_TOKEN: ${{ secrets.ACCESS_TOKEN || github.token }}
       - run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add dark_mode.svg light_mode.svg
-          git diff --cached --quiet || (git commit -m "Update uptime" && git push)
+          git diff --cached --quiet || (git commit -m "Update stats and uptime" && git push)
