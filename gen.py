@@ -5,8 +5,8 @@ from dateutil.relativedelta import relativedelta
 from PIL import Image, ImageOps
 
 USER = "h4ckibl3"
-W, H, WIDTH = 30, 20, 57
-ART_X, ART_Y = 58, 85   # small face, centred in the left column   # ascii cols/rows, info line width in chars
+W, H, WIDTH = 36, 22, 57
+ART_X, ART_Y = 22, 62   # small face, centred in the left column   # ascii cols/rows, info line width in chars
 
 def uptime():
     d = relativedelta(datetime.date.today(), datetime.date(2005, 7, 11))
@@ -36,12 +36,14 @@ def ascii_art():
         if (n == bg).all(): break
         bg = n
     bg = np.asarray(Image.fromarray((bg * 255).astype("uint8")).filter(ImageFilter.MaxFilter(7))) > 0
-    s = a.shape[0] / 800   # tight face crop (hair to chin) tuned for the 800px avatar; w/h 0.72 = 30x20 cells
-    box = tuple(int(c * s) for c in (305, 150, 530, 462))
-    t = ImageOps.autocontrast(src.convert("L"), cutoff=3, mask=Image.fromarray(((~bg) * 255).astype("uint8")))
-    t = t.crop(box).filter(ImageFilter.MinFilter(3))   # thicken glasses frames / brows
+    import cv2
+    s = a.shape[0] / 800   # tight face crop (hair to chin) tuned for the 800px avatar
+    fh = 312; fw = int(fh * W * 9.6 / (H * 20)); cx = 418          # crop aspect = cell grid aspect
+    box = tuple(int(c * s) for c in (cx - fw // 2, 150, cx + fw // 2, 150 + fh))
+    g = cv2.createCLAHE(clipLimit=3, tileGridSize=(4, 4)).apply(cv2.cvtColor(np.asarray(src).astype("uint8"), cv2.COLOR_RGB2GRAY))
+    lo, hi = np.percentile(g[~bg], [2, 98]); g = np.clip((g.astype(float) - lo) / (hi - lo), 0, 1); g[bg] = 0
+    t = Image.fromarray((g * 255).astype("uint8")).crop(box).filter(ImageFilter.MinFilter(3))  # thicken frames/brows
     x = np.asarray(t.resize((W, H), Image.BOX)).astype(float) / 255
-    x[np.asarray(Image.fromarray(bg).crop(box).resize((W, H)))] = 0
     ramp = " .:-=+*#%@"
     return ["".join(ramp[int(c * (len(ramp) - 1))] for c in row) for row in x]
 
