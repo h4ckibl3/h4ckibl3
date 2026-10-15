@@ -6,7 +6,8 @@ from PIL import Image, ImageOps
 
 USER = "h4ckibl3"
 W, H, WIDTH = 39, 24, 57
-ART_X, ART_Y = 15, 30   # small face, centred in the left column   # ascii cols/rows, info line width in chars
+ART_X, ART_Y = 15, 30
+LIGHT_GAMMA = 1.0   # small face, centred in the left column   # ascii cols/rows, info line width in chars
 
 def uptime():
     d = relativedelta(datetime.date.today(), datetime.date(2005, 7, 11))
@@ -51,7 +52,7 @@ def stats():
         print("stats unavailable:", e)
         return None
 
-def ascii_art():
+def ascii_art(light=False):
     """Subject-only ASCII: flood-fill the black bg + white ring/outline from the border,
     equalize the subject, gamma, unsharp mask, crop head & shoulders."""
     import numpy as np
@@ -73,6 +74,9 @@ def ascii_art():
     lo, hi = np.percentile(g[~bg], [2, 98]); g = np.clip((g.astype(float) - lo) / (hi - lo), 0, 1); g[bg] = 0
     t = Image.fromarray((g * 255).astype("uint8")).crop(box).filter(ImageFilter.MinFilter(3))  # thicken frames/brows
     x = np.asarray(t.resize((W, H), Image.BOX)).astype(float) / 255
+    if light:   # dense chars read dark on a light card: invert tone so skin stays light, hair/glasses/beard dark
+        mk = np.asarray(Image.fromarray((bg * 255).astype("uint8")).crop(box).resize((W, H), Image.BOX)) > 127
+        x = np.clip(1 - x, 0, 1) ** LIGHT_GAMMA; x[mk] = 0
     ramp = " .:-=+*#%@"
     return ["".join(ramp[int(c * (len(ramp) - 1))] for c in row) for row in x]
 
@@ -132,8 +136,8 @@ def build():
         else: out.append(kv(y, *r))
     return out
 
-def svg(name, bg, fg, key, val, cc, add, dl):
-    art = "\n".join(f'<tspan x="{ART_X}" y="{ART_Y+20*i}">{escape(l)}</tspan>' for i, l in enumerate(ascii_art()))
+def svg(name, bg, fg, key, val, cc, add, dl, art_fg=None, light=False):
+    art = "\n".join(f'<tspan x="{ART_X}" y="{ART_Y+20*i}">{escape(l)}</tspan>' for i, l in enumerate(ascii_art(light)))
     open(name, "w").write(f"""<?xml version='1.0' encoding='UTF-8'?>
 <svg xmlns="http://www.w3.org/2000/svg" font-family="ConsolasFallback,Consolas,monospace" width="985px" height="530px" font-size="16px">
 <style>
@@ -152,21 +156,21 @@ size-adjust: 109%;
 text, tspan {{white-space: pre;}}
 </style>
 <rect width="985px" height="530px" fill="{bg}" rx="15"/>
-<text x="{ART_X}" y="{ART_Y}" fill="{fg}" class="ascii">
+<text x="{ART_X}" y="{ART_Y}" fill="{art_fg or fg}" class="ascii">
 {art}
 </text>
 <text x="390" y="30" fill="{fg}">
 """ + "\n".join(build()) + "\n</text>\n</svg>\n")
 
 svg("dark_mode.svg", "#161b22", "#c9d1d9", "#ffa657", "#a5d6ff", "#616e7f", "#3fb950", "#f85149")
-svg("light_mode.svg", "#f6f8fa", "#24292f", "#953800", "#0a3069", "#c2cfde", "#1a7f37", "#cf222e")
+svg("light_mode.svg", "#f6f8fa", "#24292f", "#953800", "#0a3069", "#c2cfde", "#1a7f37", "#cf222e", light=True)
 
 try:  # local preview only (monospace substitute for Consolas)
     import cairosvg
-    prev = open("dark_mode.svg").read().replace("ConsolasFallback,Consolas,monospace", "monospace")
     import re
-    prev = re.sub(r'(<tspan x="\d+" y="\d+">)([^<]*)', lambda m: m.group(1) + m.group(2).replace(" ", "\u00a0"), prev)
-    cairosvg.svg2png(bytestring=prev.encode(),
-                     write_to="/workspace/gh_profile_preview.png")
+    for mode, out in (("dark", "/workspace/gh_profile_preview.png"), ("light", "/workspace/gh_profile_preview_light.png")):
+        prev = open(f"{mode}_mode.svg").read().replace("ConsolasFallback,Consolas,monospace", "monospace")
+        prev = re.sub(r'(<tspan x="\d+" y="\d+">)([^<]*)', lambda m: m.group(1) + m.group(2).replace(" ", "\u00a0"), prev)
+        cairosvg.svg2png(bytestring=prev.encode(), write_to=out)
 except Exception:
     pass
